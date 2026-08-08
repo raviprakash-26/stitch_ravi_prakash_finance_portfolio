@@ -1,0 +1,130 @@
+---
+title: "Window functions explained with a ledger"
+description: "RANK, LAG, and running totals stop being abstract the moment you point them at a cash book."
+order: 2
+difficulty: intermediate
+publishedAt: "2026-07-24"
+tags: ["SQL", "Accounting", "Analytics"]
+---
+
+Window function tutorials usually start with employee salaries, which nobody has ever actually needed to analyse. Accounting data works better, because the questions are ones you already ask: what's the running balance, what changed since last month, which entries are the largest.
+
+Use the retail practice database from the Resources library to follow along.
+
+## The one idea
+
+`GROUP BY` collapses rows. Ten transactions become one total, and you lose the individual rows.
+
+A window function computes across a set of rows **without collapsing them**. Every row survives, and each one gets an extra column calculated from its neighbours. That's the whole concept. Everything below is syntax.
+
+```sql
+SELECT
+  entry_date,
+  amount,
+  SUM(amount) OVER (ORDER BY entry_date) AS running_balance
+FROM ledger_entries;
+```
+
+Every entry still appears. Each now carries the balance as of its own date.
+
+## Reading the OVER clause
+
+`OVER` has two parts, and both are optional:
+
+```sql
+OVER (PARTITION BY account_code ORDER BY entry_date)
+```
+
+- **`PARTITION BY`** restarts the calculation per group. Without it, the window is the entire result set. With `account_code`, each account gets its own independent running balance — exactly like separate ledger pages.
+- **`ORDER BY`** defines the sequence within each partition. For running totals this is essential: "running" means nothing without an order.
+
+A running balance per account is therefore:
+
+```sql
+SELECT
+  account_code,
+  entry_date,
+  amount,
+  SUM(amount) OVER (
+    PARTITION BY account_code
+    ORDER BY entry_date
+  ) AS running_balance
+FROM ledger_entries
+ORDER BY account_code, entry_date;
+```
+
+That query is a trial balance you can audit line by line, which is something `GROUP BY` cannot give you.
+
+## LAG and LEAD: comparing to the previous row
+
+`LAG` reaches backwards, `LEAD` reaches forwards.
+
+```sql
+SELECT
+  period,
+  revenue,
+  LAG(revenue) OVER (ORDER BY period) AS prior_period,
+  revenue - LAG(revenue) OVER (ORDER BY period) AS movement
+FROM monthly_revenue;
+```
+
+The first row's `prior_period` is `NULL` — there's nothing before it — so `movement` is `NULL` too. That's correct behaviour, not a bug, and you should leave it rather than defaulting it to zero. A zero movement and an unknown movement mean different things, and collapsing the distinction is how variance reports start lying.
+
+Give `LAG` a second argument to reach further back: `LAG(revenue, 12)` is the same month last year.
+
+## RANK, DENSE_RANK, ROW_NUMBER
+
+These three differ only in how they handle ties, and choosing wrong is a classic interview trap:
+
+```sql
+SELECT
+  vendor_name,
+  total_billed,
+  ROW_NUMBER() OVER (ORDER BY total_billed DESC) AS row_num,
+  RANK()       OVER (ORDER BY total_billed DESC) AS rank_with_gaps,
+  DENSE_RANK() OVER (ORDER BY total_billed DESC) AS rank_no_gaps
+FROM vendor_totals;
+```
+
+With two vendors tied at the top:
+
+- `ROW_NUMBER` gives 1, 2, 3 — ties broken arbitrarily
+- `RANK` gives 1, 1, 3 — ties share a rank, then it skips
+- `DENSE_RANK` gives 1, 1, 2 — ties share a rank, no skip
+
+For "top 10 vendors by spend," `RANK` is usually right: if three vendors tie for tenth, you want all three, not an arbitrary one.
+
+## The clause-order gotcha
+
+You cannot filter on a window function in `WHERE`:
+
+```sql
+-- This fails.
+SELECT vendor_name, RANK() OVER (ORDER BY total_billed DESC) AS r
+FROM vendor_totals
+WHERE r <= 10;
+```
+
+`WHERE` runs before window functions are computed. Wrap it instead:
+
+```sql
+SELECT * FROM (
+  SELECT vendor_name, total_billed,
+         RANK() OVER (ORDER BY total_billed DESC) AS r
+  FROM vendor_totals
+) ranked
+WHERE r <= 10;
+```
+
+This trips people up constantly, and it's asked in interviews precisely because it tests whether you understand *when* each clause runs rather than just what it does.
+
+## Practice
+
+Against the practice database:
+
+1. Running total of revenue by month for the full year
+2. Each month's revenue against the same month last year, with the variance
+3. Top 3 products per category by revenue, handling ties sensibly
+4. The largest single day-on-day drop in revenue, and its date
+
+Question 3 needs `PARTITION BY` plus a subquery filter. If you can write it without looking anything up, you know this topic.

@@ -1,0 +1,121 @@
+---
+title: "The eight DAX measures that cover most dashboards"
+description: "You don't need fifty functions. These eight handle the majority of business reporting requests."
+order: 1
+difficulty: intermediate
+publishedAt: "2026-07-02"
+tags: ["Power BI", "DAX"]
+isFreePreview: true
+---
+
+DAX has several hundred functions. In three years of building business dashboards you will use about twenty, and eight of them will cover most requests you receive.
+
+This assumes you have a star schema — a fact table with transactions, dimension tables for date, product, and customer. If you don't, fix that first; no amount of DAX rescues a bad model.
+
+## 1. The base measure
+
+```dax
+Total Revenue = SUM(Sales[Revenue])
+```
+
+Trivial, but write it as a measure rather than dragging the column into a visual. Every measure below builds on this one, and when the revenue definition changes — net of returns, say — you edit one line instead of forty visuals.
+
+## 2. Distinct count
+
+```dax
+Order Count = DISTINCTCOUNT(Sales[OrderID])
+```
+
+Note it's not `COUNT`. A multi-line order has several rows; `COUNT` gives you line items, `DISTINCTCOUNT` gives you orders. Business users asking "how many orders" almost always mean the latter, and this mismatch is a frequent source of numbers that don't tie to the operational system.
+
+## 3. Year to date
+
+```dax
+Revenue YTD =
+TOTALYTD([Total Revenue], 'Date'[Date])
+```
+
+This requires a proper date table marked as a date table in the model. If your fiscal year isn't the calendar year — and in India it usually isn't — add the year-end:
+
+```dax
+Revenue YTD =
+TOTALYTD([Total Revenue], 'Date'[Date], "31/03")
+```
+
+That third argument is the fiscal year end. Forgetting it is why Indian dashboards often show YTD figures that mean nothing to the finance team reading them.
+
+## 4. Prior year
+
+```dax
+Revenue PY =
+CALCULATE([Total Revenue], SAMEPERIODLASTYEAR('Date'[Date]))
+```
+
+`CALCULATE` is the function DAX is built around: it evaluates a measure under a modified filter context. Here the modification is "shift the date filter back one year."
+
+## 5. Growth against prior year
+
+```dax
+Revenue YoY % =
+DIVIDE([Total Revenue] - [Revenue PY], [Revenue PY])
+```
+
+Use `DIVIDE`, never the `/` operator. `DIVIDE` returns blank on a zero denominator instead of an error, and a blank cell in a visual is far better than an error that blanks the entire report page.
+
+## 6. Percentage of total
+
+```dax
+Revenue % of Total =
+DIVIDE(
+    [Total Revenue],
+    CALCULATE([Total Revenue], ALLSELECTED(Sales))
+)
+```
+
+`ALLSELECTED` removes the row's own filter but respects slicers the user has set. This is almost always what people mean by "percentage of total" — `ALL` would ignore the slicers too, giving percentages that don't sum to 100% on a filtered page and generating a support request within the hour.
+
+## 7. Running total
+
+```dax
+Revenue Running Total =
+CALCULATE(
+    [Total Revenue],
+    FILTER(
+        ALLSELECTED('Date'[Date]),
+        'Date'[Date] <= MAX('Date'[Date])
+    )
+)
+```
+
+The `MAX` is doing something subtle: inside a row of a visual, it returns that row's date. So each row accumulates everything up to itself.
+
+## 8. Rank
+
+```dax
+Product Rank =
+RANKX(
+    ALLSELECTED(Product[ProductName]),
+    [Total Revenue],
+    ,
+    DESC,
+    DENSE
+)
+```
+
+The empty third argument is not a typo — it's the optional value parameter, skipped. `DENSE` means tied products share a rank without creating gaps.
+
+## The thing that makes DAX click
+
+Every measure is evaluated inside a **filter context** — the combination of the row it sits in, the visual's filters, the page filters, and any slicers. `CALCULATE` is the only way to change that context.
+
+Once you internalise that, the eight measures above stop being recipes and start being obvious. Until you do, DAX feels arbitrary, and no amount of copying formulas from forums fixes it.
+
+## Practice
+
+Build a report page with revenue, orders, YoY growth, and a running total by month, then:
+
+1. Add a fiscal-year slicer and confirm YTD respects it
+2. Add a product-category slicer and confirm % of total still sums to 100%
+3. Find out what happens to the running total when you sort the visual by revenue rather than date
+
+Number 3 will break in an instructive way. Understanding why is worth more than the fix.

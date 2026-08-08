@@ -1,0 +1,112 @@
+---
+title: "Your first genuinely useful Python script"
+description: "Skip the toy examples. Build a ledger reconciliation that flags differences, in about forty lines."
+order: 1
+difficulty: beginner
+publishedAt: "2026-07-08"
+tags: ["Python", "Accounting", "Automation"]
+isFreePreview: true
+---
+
+Most Python courses spend three weeks on loops and string formatting before you build anything you'd use. This builds something useful immediately: a script that compares two ledgers and tells you what doesn't match.
+
+You need Python 3 and pandas (`pip install pandas openpyxl`). Nothing else.
+
+## The problem
+
+You have a bank statement and a cash book covering the same month. They should agree. They don't. Finding the differences by eye takes an hour and you'll miss one.
+
+The job is mechanical: match transactions on reference and amount, then list what's left over on each side.
+
+## Loading the files
+
+```python
+import pandas as pd
+
+bank = pd.read_excel("bank_statement.xlsx")
+book = pd.read_excel("cash_book.xlsx")
+
+print(bank.shape)
+print(bank.head())
+```
+
+`shape` gives `(rows, columns)`. Print it every time — if the row count isn't what you expected, stop and check the file before writing another line. Most reconciliation scripts that produce wrong answers were reading the wrong sheet all along.
+
+## Cleaning the join keys
+
+This is where reconciliations actually fail. Reference numbers arrive with trailing spaces, inconsistent case, and amounts stored as text with currency symbols.
+
+```python
+def clean(df, ref_col, amount_col):
+    df = df.copy()
+    df["ref"] = df[ref_col].astype(str).str.strip().str.upper()
+    df["amount"] = (
+        df[amount_col]
+        .astype(str)
+        .str.replace(r"[₹,\s]", "", regex=True)
+        .astype(float)
+        .round(2)
+    )
+    return df[["ref", "amount"]]
+
+bank = clean(bank, "Reference", "Amount")
+book = clean(book, "Voucher No", "Debit")
+```
+
+The `.round(2)` matters. Floating point means `1234.56` read from two different files may not compare equal without it, and you'll get phantom differences that make no sense.
+
+## The comparison
+
+```python
+merged = bank.merge(
+    book,
+    on="ref",
+    how="outer",
+    suffixes=("_bank", "_book"),
+    indicator=True,
+)
+```
+
+`how="outer"` keeps everything from both sides. `indicator=True` adds a `_merge` column telling you where each row came from — `left_only`, `right_only`, or `both`. That single argument does most of the work.
+
+```python
+bank_only = merged[merged["_merge"] == "left_only"]
+book_only = merged[merged["_merge"] == "right_only"]
+
+matched = merged[merged["_merge"] == "both"].copy()
+matched["difference"] = matched["amount_bank"] - matched["amount_book"]
+amount_mismatch = matched[matched["difference"].abs() > 0.01]
+```
+
+Three categories, which is exactly how an auditor thinks about it: in the bank but not the book, in the book but not the bank, and present in both but for different amounts.
+
+The `> 0.01` tolerance rather than `!= 0` is deliberate — it absorbs rounding noise without hiding real differences.
+
+## Writing the output
+
+```python
+with pd.ExcelWriter("reconciliation.xlsx") as writer:
+    bank_only.to_excel(writer, sheet_name="Bank only", index=False)
+    book_only.to_excel(writer, sheet_name="Book only", index=False)
+    amount_mismatch.to_excel(writer, sheet_name="Amount differs", index=False)
+
+print(f"Bank only: {len(bank_only)}")
+print(f"Book only: {len(book_only)}")
+print(f"Amount differs: {len(amount_mismatch)}")
+```
+
+Three sheets, one per exception type. Hand this to whoever asked and they can work through it directly.
+
+## Why this is the right first script
+
+It's forty lines, it solves a real recurring task, and it's the same shape as most finance automation you'll write afterwards: read files, normalise the keys, compare, write exceptions. Learn this pattern and you can point it at GST returns, vendor statements, or stock registers with small changes.
+
+## Practice
+
+Extend it to:
+
+1. Handle one-to-many matches, where a single bank credit settles several invoices
+2. Flag transactions where the reference matches but the dates are more than seven days apart
+3. Produce a summary sheet with the total value in each exception category
+
+Number 1 is genuinely hard and is where most commercial reconciliation tools earn their licence fee. Attempt it after the rest works.

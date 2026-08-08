@@ -1,0 +1,70 @@
+---
+title: "XLOOKUP, and when VLOOKUP still wins"
+description: "Lookups are where most spreadsheet errors live. Here's how to write ones that don't silently break."
+order: 2
+difficulty: beginner
+publishedAt: "2026-07-12"
+tags: ["Excel", "Formulas"]
+---
+
+Lookups join two tables together. They are also, by a wide margin, the most common source of wrong numbers in real spreadsheets — because when a lookup fails, it usually fails quietly.
+
+## The problem with VLOOKUP
+
+`VLOOKUP` searches the first column of a range and returns a value from the *n*th column to the right:
+
+```excel
+=VLOOKUP(A2, Products!A:D, 3, FALSE)
+```
+
+Three things about that formula are fragile:
+
+1. **The column index is a hard-coded number.** Insert a column into `Products` and every lookup pointing at column 3 now returns column 2's data. No error appears. Your report is just wrong from that day forward.
+2. **It only searches rightward.** If your key is in column C and the value you want is in column A, you can't use `VLOOKUP` at all without rearranging the source.
+3. **The fourth argument is optional and defaults to approximate match.** Omit `FALSE` and Excel returns the *closest* match, which on unsorted data is effectively a random row.
+
+That third point deserves emphasis: `=VLOOKUP(A2, Products!A:D, 3)` is a valid formula that will return confident nonsense.
+
+## XLOOKUP
+
+```excel
+=XLOOKUP(A2, Products[SKU], Products[Price], "Not found")
+```
+
+You name the lookup column and the return column separately. Insert columns anywhere and it keeps working. It searches in any direction. It defaults to exact match. And the fourth argument gives you a readable fallback instead of `#N/A`.
+
+That fallback matters more than it looks. `#N/A` propagates — one missing SKU turns every downstream `SUM` into `#N/A`, and people respond by wrapping everything in `IFERROR`, which hides *all* errors including the ones they needed to see. A specific string like `"Not found"` stays visible and greppable without poisoning your totals.
+
+## When VLOOKUP still wins
+
+Compatibility. `XLOOKUP` requires Microsoft 365 or Excel 2021. If your workbook will be opened by someone on an older build — very common in accounting departments and with government filing tools — `XLOOKUP` renders as `#NAME?`.
+
+If you need portability, use `INDEX`/`MATCH` rather than falling back to `VLOOKUP`:
+
+```excel
+=INDEX(Products[Price], MATCH(A2, Products[SKU], 0))
+```
+
+It works everywhere, it's insert-safe like `XLOOKUP`, and the `0` makes exact match explicit. It's two functions instead of one, which is the entire cost.
+
+## The check that catches most lookup errors
+
+After any lookup, count your unmatched rows:
+
+```excel
+=COUNTIF(D:D, "Not found")
+```
+
+If that number isn't zero, something in your join key doesn't line up — usually trailing spaces, numbers stored as text, or inconsistent casing. `TRIM` and `VALUE` fix the first two.
+
+Do this check every time. A lookup that matches 94% of rows looks identical to one that matches 100% until someone asks why the totals don't tie.
+
+## Practice
+
+Take the sales extract and the product master from the Resources library and:
+
+1. Bring product category and unit cost onto the sales rows
+2. Count the unmatched rows and find out why they didn't match
+3. Calculate gross margin per transaction
+
+The unmatched rows in that dataset are deliberate. Finding out *why* they don't match is the actual lesson.
