@@ -16,6 +16,15 @@ const Certifications = () => {
       alt: 'Data Analytics Certificate',
     },
     {
+      id: 8,
+      title: 'Microsoft Applied Skills: Generate reports with AI research agents',
+      provider: 'Microsoft',
+      image: '/certificates/microsoft-generate-reports-ai-research-agents.jpg',
+      issueDate: 'September 5, 2026',
+      alt: 'Microsoft Applied Skills - Generate reports with AI research agents',
+      credentialId: '54043CCE2C3353DB'
+    },
+    {
       id: 2,
       title: 'Data Visualization',
       provider: 'Simplilearn SkillUp',
@@ -62,6 +71,15 @@ const Certifications = () => {
       image: '/english-language-communication.jpg',
       issueDate: 'May 2026',
       alt: 'English Language Communication Certificate',
+    },
+    {
+      id: 8,
+      title: 'Microsoft Applied Skills: Generate reports with AI research agents',
+      provider: 'Microsoft',
+      image: '/certificates/microsoft-generate-reports-ai-research-agents.jpg',
+      issueDate: 'September 5, 2026',
+      alt: 'Microsoft Applied Skills - Generate reports with AI research agents',
+      credentialId: '54043CCE2C3353DB'
     },
   ];
 
