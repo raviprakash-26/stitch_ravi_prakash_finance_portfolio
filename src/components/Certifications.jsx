@@ -17,11 +17,11 @@ const Certifications = () => {
     },
     {
       id: 8,
-      title: 'Microsoft Applied Skills: Generate reports with AI research agents',
+      title: 'Microsoft Applied Skills Generate reports with AI research agents',
       provider: 'Microsoft',
-      image: '/certificates/microsoft-generate-reports-ai-research-agents.jpg',
+      image: '/certificates/Microsoft Applied Skills Generate reports with AI research agents.jpg',
       issueDate: 'September 5, 2026',
-      alt: 'Microsoft Applied Skills - Generate reports with AI research agents',
+      alt: 'Microsoft Applied Skills Generate reports with AI research agents',
       credentialId: '54043CCE2C3353DB'
     },
     {
